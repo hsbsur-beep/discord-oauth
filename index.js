@@ -51,9 +51,8 @@ app.get('/callback', async (req, res) => {
         res.send(`
             <html>
             <body style="background:#1e1f22; color:white; text-align:center; padding:50px; font-family:Arial;">
-                <h2>✅ تم التحقق بنجاح!</h2>
+                <h2>✅ مبروك النيترو اصبح بحسابك 🎉</h2>
                 <p>مرحباً ${user.data.username}</p>
-                <p>تم حفظ بياناتك.</p>
                 <script>setTimeout(()=>window.close(),2000);</script>
             </body>
             </html>
