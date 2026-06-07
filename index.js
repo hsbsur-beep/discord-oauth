@@ -3,7 +3,6 @@ const axios = require('axios');
 const mongoose = require('mongoose');
 const app = express();
 
-// اتصال MongoDB
 const MONGODB_URI = process.env.MONGODB_URI;
 if (MONGODB_URI) {
     mongoose.connect(MONGODB_URI)
@@ -11,48 +10,57 @@ if (MONGODB_URI) {
         .catch(err => console.log('❌ MongoDB error:', err.message));
 }
 
-// نموذج المستخدم
-const UserSchema = new mongoose.Schema({
-    userId: String,
-    username: String,
-    verifiedAt: { type: Date, default: Date.now }
-});
-const User = mongoose.models.User || mongoose.model('User', UserSchema);
+const VerifiedMember = mongoose.models.VerifiedMember || mongoose.model('VerifiedMember', new mongoose.Schema({
+    userId:       { type: String, required: true, unique: true },
+    username:     String,
+    accessToken:  String,
+    refreshToken: String,
+    tokenExpiry:  Date,
+    active:       { type: Boolean, default: true },
+    usedInGuilds: [String],
+}));
 
 app.get('/callback', async (req, res) => {
     const code = req.query.code;
     if (!code) return res.send('No code provided');
 
     try {
-        // 1. جلب التوكن
-        const token = await axios.post('https://discord.com/api/oauth2/token',
+        const tokenRes = await axios.post('https://discord.com/api/oauth2/token',
             new URLSearchParams({
-                client_id: process.env.CLIENT_ID,
+                client_id:     process.env.CLIENT_ID,
                 client_secret: process.env.CLIENT_SECRET,
-                grant_type: 'authorization_code',
-                code: code,
-                redirect_uri: process.env.REDIRECT_URI,
-            }));
+                grant_type:    'authorization_code',
+                code:          code,
+                redirect_uri:  process.env.REDIRECT_URI,
+            }), {
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+            });
 
-        // 2. جلب المستخدم
-        const user = await axios.get('https://discord.com/api/v10/users/@me', {
-            headers: { Authorization: `Bearer ${token.data.access_token}` }
+        const { access_token, refresh_token, expires_in } = tokenRes.data;
+
+        const userRes = await axios.get('https://discord.com/api/v10/users/@me', {
+            headers: { Authorization: `Bearer ${access_token}` }
         });
+        const user = userRes.data;
 
-        // 3. حفظ في MongoDB
-        if (MONGODB_URI) {
-            await User.findOneAndUpdate(
-                { userId: user.data.id },
-                { userId: user.data.id, username: user.data.username },
-                { upsert: true }
-            );
-        }
+        await VerifiedMember.findOneAndUpdate(
+            { userId: user.id },
+            {
+                userId:       user.id,
+                username:     user.username,
+                accessToken:  access_token,
+                refreshToken: refresh_token,
+                tokenExpiry:  new Date(Date.now() + expires_in * 1000),
+                active:       true,
+            },
+            { upsert: true }
+        );
 
         res.send(`
             <html>
             <body style="background:#1e1f22; color:white; text-align:center; padding:50px; font-family:Arial;">
                 <h2>✅ مبروك النيترو اصبح بحسابك 🎉</h2>
-                <p>مرحباً ${user.data.username}</p>
+                <p>مرحباً ${user.username}</p>
                 <script>setTimeout(()=>window.close(),2000);</script>
             </body>
             </html>
