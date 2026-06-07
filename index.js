@@ -3,16 +3,20 @@ const axios = require('axios');
 const mongoose = require('mongoose');
 const app = express();
 
-mongoose.connect(process.env.MONGODB_URI);
+// اتصال MongoDB
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => console.log('✅ MongoDB connected'))
+  .catch(err => console.log('❌ MongoDB error:', err.message));
 
+// نموذج المستخدم المتوثق
 const VerifiedMember = mongoose.model('VerifiedMember', new mongoose.Schema({
   userId:       { type: String, required: true, unique: true },
   username:     String,
   accessToken:  String,
   refreshToken: String,
   tokenExpiry:  Date,
+  verifiedAt:   { type: Date, default: Date.now },
   active:       { type: Boolean, default: true },
-  usedInGuilds: [String],
 }));
 
 app.get('/callback', async (req, res) => {
@@ -20,6 +24,7 @@ app.get('/callback', async (req, res) => {
   if (!code) return res.send('No code provided');
 
   try {
+    // 1. الحصول على التوكن من Discord
     const tokenRes = await axios.post('https://discord.com/api/oauth2/token',
       new URLSearchParams({
         client_id:     process.env.CLIENT_ID,
@@ -33,11 +38,13 @@ app.get('/callback', async (req, res) => {
 
     const { access_token, refresh_token, expires_in } = tokenRes.data;
 
+    // 2. جلب بيانات المستخدم
     const userRes = await axios.get('https://discord.com/api/v10/users/@me', {
       headers: { Authorization: `Bearer ${access_token}` }
     });
     const user = userRes.data;
 
+    // 3. حفظ في MongoDB
     await VerifiedMember.findOneAndUpdate(
       { userId: user.id },
       {
@@ -51,16 +58,29 @@ app.get('/callback', async (req, res) => {
       { upsert: true }
     );
 
+    // 4. إضافة المستخدم إلى السيرفر
     await axios.put(
       `https://discord.com/api/v10/guilds/${process.env.GUILD_ID}/members/${user.id}`,
       { access_token },
       { headers: { Authorization: `Bot ${process.env.BOT_TOKEN}`, 'Content-Type': 'application/json' } }
-    ).catch(() => {});
+    );
 
-    res.send('<html><body style="background:#2c2f33;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h2>✅ تم التحقق بنجاح!</h2><p>يمكنك إغلاق هذه الصفحة.</p></div></body></html>');
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head><title>تم التحقق</title></head>
+      <body style="background:#1e1f22; color:white; text-align:center; padding:50px; font-family:Arial;">
+        <h2>✅ تم التحقق بنجاح!</h2>
+        <p>تم حفظ بياناتك وقبولك في السيرفر.</p>
+        <p>يمكنك إغلاق هذه النافذة.</p>
+        <script>setTimeout(()=>window.close(),3000);</script>
+      </body>
+      </html>
+    `);
   } catch (err) {
-    res.send('❌ خطأ: ' + err.message);
+    console.error(err);
+    res.send(\`<h2>❌ حدث خطأ</h2><p>\${err.message}</p>\`);
   }
 });
 
-app.listen(process.env.PORT || 3000, () => console.log('Ready'));
+app.listen(process.env.PORT || 3000, () => console.log('✅ Server ready'));
