@@ -50,7 +50,7 @@ app.get('/callback', async (req, res) => {
 
         res.send(`
             <html>
-            <body style="background:#1e1f22; color:white; text-align:center; padding:50px;">
+            <body style="background:#1e1f22; color:white; text-align:center; padding:50px; font-family:Arial;">
                 <h2>✅ تم التحقق بنجاح!</h2>
                 <p>مرحباً ${user.data.username}</p>
                 <p>تم حفظ بياناتك.</p>
@@ -59,7 +59,7 @@ app.get('/callback', async (req, res) => {
             </html>
         `);
     } catch (err) {
-        res.send(\`<h2>❌ خطأ: \${err.message}</h2>\`);
+        res.send(`<h2>❌ خطأ: ${err.message}</h2>`);
     }
 });
 
